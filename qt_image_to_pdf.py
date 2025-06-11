@@ -21,8 +21,9 @@ class CustomEvent(QEvent):
 
 
 class DraggableLabel(QWidget):
-    def __init__(self, path, parent=None):
+    def __init__(self, path, app, parent=None):
         super().__init__(parent)
+        self.app = app
         self.path = path
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
@@ -44,6 +45,13 @@ class DraggableLabel(QWidget):
         self.setFixedSize(160, 180)
         self.setAcceptDrops(True)
         self.setStyleSheet("border: 2px solid #444; border-radius: 8px; background-color: #2d2d2d;")
+
+        # delete button
+        self.del_btn = QPushButton('❌', self)
+        self.del_btn.setFixedSize(20, 20)
+        self.del_btn.setStyleSheet("background: transparent; color: red; border: none;")
+        self.del_btn.clicked.connect(self.delete_self)
+        self.del_btn.move(self.width() - 25, 5)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -72,6 +80,10 @@ class DraggableLabel(QWidget):
         self.label.setPixmap(pixmap)
         fname = os.path.basename(self.path)
         self.text.setText(fname)
+
+    def delete_self(self):
+        if hasattr(self, 'app'):
+            self.app.remove_image(self)
 
 
 class ImageToPDFApp(QWidget):
@@ -128,7 +140,7 @@ class ImageToPDFApp(QWidget):
         paths, _ = QFileDialog.getOpenFileNames(self, "Select Images", "", "Images (*.png *.jpg *.jpeg *.webp *.bmp)")
         for path in paths:
             if path not in [lbl.path for lbl in self.image_labels]:
-                label = DraggableLabel(path)
+                label = DraggableLabel(path, self)
                 self.image_labels.append(label)
         self.refresh_grid()
 
@@ -139,6 +151,12 @@ class ImageToPDFApp(QWidget):
                 widget.setParent(None)
         for i, label in enumerate(self.image_labels):
             self.grid.addWidget(label, i // 5, i % 5)
+
+    def remove_image(self, label):
+        if label in self.image_labels:
+            self.image_labels.remove(label)
+            label.setParent(None)
+            self.refresh_grid()
 
     def clear_images(self):
         self.image_labels = []
