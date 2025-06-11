@@ -6,7 +6,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPixmap, QDrag
 from PyQt5.QtCore import Qt, QMimeData, QPoint, QEvent, QCoreApplication
-from PIL import Image
 import img2pdf
 from threading import Thread
 
