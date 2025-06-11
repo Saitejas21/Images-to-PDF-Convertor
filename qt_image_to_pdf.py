@@ -69,11 +69,10 @@ class DraggableLabel(QWidget):
 
     def dropEvent(self, event):
         source = event.source()
-        target = self
-        if isinstance(source, DraggableLabel) and source != target:
-            source.path, target.path = target.path, source.path
-            source.update_display()
-            target.update_display()
+        if isinstance(source, DraggableLabel) and source != self:
+            if hasattr(self, 'app'):
+                self.app.move_image(source, self)
+            event.acceptProposedAction()
 
     def update_display(self):
         pixmap = QPixmap(self.path).scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -151,6 +150,13 @@ class ImageToPDFApp(QWidget):
                 widget.setParent(None)
         for i, label in enumerate(self.image_labels):
             self.grid.addWidget(label, i // 5, i % 5)
+
+    def move_image(self, source, target):
+        if source in self.image_labels and target in self.image_labels:
+            src_idx = self.image_labels.index(source)
+            tgt_idx = self.image_labels.index(target)
+            self.image_labels.insert(tgt_idx, self.image_labels.pop(src_idx))
+            self.refresh_grid()
 
     def remove_image(self, label):
         if label in self.image_labels:
