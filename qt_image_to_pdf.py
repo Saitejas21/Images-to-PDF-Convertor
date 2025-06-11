@@ -155,6 +155,8 @@ class ImageToPDFApp(QWidget):
         if source in self.image_labels and target in self.image_labels:
             src_idx = self.image_labels.index(source)
             tgt_idx = self.image_labels.index(target)
+            if src_idx < tgt_idx:
+                tgt_idx -= 1
             self.image_labels.insert(tgt_idx, self.image_labels.pop(src_idx))
             self.refresh_grid()
 
