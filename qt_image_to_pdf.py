@@ -134,6 +134,9 @@ class ImageToPDFApp(QWidget):
         self.overlay.setAlignment(Qt.AlignCenter)
         self.overlay.setText("🔄 Converting images to PDF...")
         self.overlay.hide()
+        
+        # Update overlay size when the container resizes
+        self.container.installEventFilter(self)
 
     def add_images(self):
         paths, _ = QFileDialog.getOpenFileNames(self, "Select Images", "", "Images (*.png *.jpg *.jpeg *.webp *.bmp)")
@@ -204,6 +207,15 @@ class ImageToPDFApp(QWidget):
             QMessageBox.critical(self, title, text)
         else:
             QMessageBox.information(self, title, text)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.overlay.setGeometry(0, 0, self.container.width(), self.container.height())
+
+    def eventFilter(self, source, event):
+        if source is self.container and event.type() == QEvent.Resize:
+            self.overlay.setGeometry(0, 0, self.container.width(), self.container.height())
+        return super().eventFilter(source, event)
 
     def event(self, event):
         if isinstance(event, CustomEvent):
