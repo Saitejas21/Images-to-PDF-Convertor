@@ -162,9 +162,13 @@ class ImageToPDFApp(QWidget):
         if label in self.image_labels:
             self.image_labels.remove(label)
             label.setParent(None)
+            label.deleteLater()
             self.refresh_grid()
 
     def clear_images(self):
+        for label in self.image_labels:
+            label.setParent(None)
+            label.deleteLater()
         self.image_labels = []
         self.refresh_grid()
 
