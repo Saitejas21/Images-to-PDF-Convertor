@@ -6,6 +6,10 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPixmap, QDrag
 from PyQt5.QtCore import Qt, QMimeData, QPoint, QEvent, QCoreApplication
+from pdf2image import convert_from_path
+from PIL.ImageQt import ImageQt
+from pypdf import PdfReader, PdfWriter
+import io
 import img2pdf
 from threading import Thread
 
@@ -20,21 +24,28 @@ class CustomEvent(QEvent):
 
 
 class DraggableLabel(QWidget):
-    def __init__(self, path, app, parent=None):
+    def __init__(self, data, pixmap, app, parent=None):
         super().__init__(parent)
         self.app = app
-        self.path = path
+        self.data = data
+        if data['type'] == 'image':
+            self.uid = f"img::{data['path']}"
+        else:
+            self.uid = f"pdf::{data['path']}::{data['page']}"
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
         layout.setContentsMargins(5, 5, 5, 5)
 
-        pixmap = QPixmap(path).scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        pixmap = pixmap.scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.label = QLabel()
         self.label.setPixmap(pixmap)
         self.label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.label)
 
-        fname = os.path.basename(path)
+        if data['type'] == 'image':
+            fname = os.path.basename(data['path'])
+        else:
+            fname = f"{os.path.basename(data['path'])} - Pg {data['page']+1}"
         self.text = QLabel(fname)
         self.text.setStyleSheet("color: white; font-size: 10px;")
         self.text.setAlignment(Qt.AlignCenter)
@@ -55,7 +66,7 @@ class DraggableLabel(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             mimeData = QMimeData()
-            mimeData.setText(self.path)
+            mimeData.setText(str(id(self)))
             drag = QDrag(self)
             drag.setMimeData(mimeData)
             drag.setPixmap(self.label.pixmap())
@@ -70,18 +81,26 @@ class DraggableLabel(QWidget):
         source = event.source()
         if isinstance(source, DraggableLabel) and source != self:
             if hasattr(self, 'app'):
-                self.app.move_image(source, self)
+                self.app.move_item(source, self)
             event.acceptProposedAction()
 
-    def update_display(self):
-        pixmap = QPixmap(self.path).scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    def update_display(self, pixmap=None):
+        if pixmap is None:
+            if self.data['type'] == 'image':
+                pixmap = QPixmap(self.data['path'])
+            else:
+                return
+        pixmap = pixmap.scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.label.setPixmap(pixmap)
-        fname = os.path.basename(self.path)
+        if self.data['type'] == 'image':
+            fname = os.path.basename(self.data['path'])
+        else:
+            fname = f"{os.path.basename(self.data['path'])} - Pg {self.data['page']+1}"
         self.text.setText(fname)
 
     def delete_self(self):
         if hasattr(self, 'app'):
-            self.app.remove_image(self)
+            self.app.remove_item(self)
 
 
 class ImageToPDFApp(QWidget):
@@ -110,8 +129,13 @@ class ImageToPDFApp(QWidget):
         self.add_btn.setStyleSheet("background-color: #ef5a3c; color: white; padding: 10px; border-radius: 5px;")
         btn_row.addWidget(self.add_btn)
 
+        self.add_pdf_btn = QPushButton("➕ Add PDF")
+        self.add_pdf_btn.clicked.connect(self.add_pdf)
+        self.add_pdf_btn.setStyleSheet("background-color: #ef5a3c; color: white; padding: 10px; border-radius: 5px;")
+        btn_row.addWidget(self.add_pdf_btn)
+
         self.clear_btn = QPushButton("🧹 Clear All")
-        self.clear_btn.clicked.connect(self.clear_images)
+        self.clear_btn.clicked.connect(self.clear_items)
         self.clear_btn.setStyleSheet("background-color: #ef5a3c; color: white; padding: 10px; border-radius: 5px;")
         btn_row.addWidget(self.clear_btn)
 
@@ -131,7 +155,7 @@ class ImageToPDFApp(QWidget):
             border-radius: 10px;
         """)
         self.overlay.setAlignment(Qt.AlignCenter)
-        self.overlay.setText("🔄 Converting images to PDF...")
+        self.overlay.setText("🔄 Generating PDF...")
         self.overlay.hide()
         
         # Update overlay size when the container resizes
@@ -139,10 +163,35 @@ class ImageToPDFApp(QWidget):
 
     def add_images(self):
         paths, _ = QFileDialog.getOpenFileNames(self, "Select Images", "", "Images (*.png *.jpg *.jpeg *.webp *.bmp)")
+        existing = [lbl.uid for lbl in self.image_labels]
         for path in paths:
-            if path not in [lbl.path for lbl in self.image_labels]:
-                label = DraggableLabel(path, self)
+            uid = f"img::{path}"
+            if uid not in existing:
+                pix = QPixmap(path)
+                data = {'type': 'image', 'path': path}
+                label = DraggableLabel(data, pix, self)
                 self.image_labels.append(label)
+        self.refresh_grid()
+
+    def add_pdf(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Select PDF", "", "PDF Files (*.pdf)")
+        if not path:
+            return
+        try:
+            pages = convert_from_path(path, fmt="png")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+            return
+        existing = [lbl.uid for lbl in self.image_labels]
+        for idx, img in enumerate(pages):
+            uid = f"pdf::{path}::{idx}"
+            if uid in existing:
+                continue
+            qimage = ImageQt(img)
+            pix = QPixmap.fromImage(qimage)
+            data = {'type': 'pdf', 'path': path, 'page': idx}
+            label = DraggableLabel(data, pix, self)
+            self.image_labels.append(label)
         self.refresh_grid()
 
     def refresh_grid(self):
@@ -153,7 +202,7 @@ class ImageToPDFApp(QWidget):
         for i, label in enumerate(self.image_labels):
             self.grid.addWidget(label, i // 5, i % 5)
 
-    def move_image(self, source, target):
+    def move_item(self, source, target):
         if source in self.image_labels and target in self.image_labels:
             src_idx = self.image_labels.index(source)
             tgt_idx = self.image_labels.index(target)
@@ -162,14 +211,14 @@ class ImageToPDFApp(QWidget):
             self.image_labels.insert(tgt_idx, self.image_labels.pop(src_idx))
             self.refresh_grid()
 
-    def remove_image(self, label):
+    def remove_item(self, label):
         if label in self.image_labels:
             self.image_labels.remove(label)
             label.setParent(None)
             label.deleteLater()
             self.refresh_grid()
 
-    def clear_images(self):
+    def clear_items(self):
         for label in self.image_labels:
             label.setParent(None)
             label.deleteLater()
@@ -178,7 +227,7 @@ class ImageToPDFApp(QWidget):
 
     def export_pdf(self):
         if not self.image_labels:
-            QMessageBox.warning(self, "No Images", "Please add images before exporting.")
+            QMessageBox.warning(self, "No Pages", "Please add images or PDFs before exporting.")
             return
 
         self.save_path, _ = QFileDialog.getSaveFileName(self, "Save PDF", "", "PDF Files (*.pdf)")
@@ -192,9 +241,20 @@ class ImageToPDFApp(QWidget):
 
     def convert_pdf(self):
         try:
-            img_paths = [lbl.path for lbl in self.image_labels]
+            writer = PdfWriter()
+            reader_cache = {}
+            for lbl in self.image_labels:
+                if lbl.data['type'] == 'image':
+                    pdf_bytes = img2pdf.convert([lbl.data['path']])
+                    reader = PdfReader(io.BytesIO(pdf_bytes))
+                    writer.add_page(reader.pages[0])
+                else:
+                    p = lbl.data['path']
+                    if p not in reader_cache:
+                        reader_cache[p] = PdfReader(p)
+                    writer.add_page(reader_cache[p].pages[lbl.data['page']])
             with open(self.save_path, "wb") as f:
-                f.write(img2pdf.convert(img_paths))
+                writer.write(f)
             self.queue_event(lambda: self.show_message("Success", "PDF saved successfully!", error=False))
         except Exception as e:
             self.queue_event(lambda: self.show_message("Error", str(e), error=True))
