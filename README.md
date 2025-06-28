@@ -12,6 +12,7 @@ Created out of frustration with online tools — and a whole lotta love 🧡
 ## ✨ Features
 
 - 🔼 Drag and drop image files (JPG, PNG, WebP, BMP, etc.)
+- ➕ Import entire PDFs and edit page order
 - 📄 Reorder thumbnails before exporting
 - 💾 Export as **one high-quality PDF**
 - 🚫 Works **100% offline** – no internet, no tracking, no compression
